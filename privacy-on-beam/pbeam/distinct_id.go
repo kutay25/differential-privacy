@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/apache/beam/sdks/v2/go/pkg/beam"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/register"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/filter"
 	log "github.com/golang/glog"
 	"github.com/google/differential-privacy/go/v4/dpagg"
 	"github.com/google/differential-privacy/go/v4/noise"
 	"github.com/google/differential-privacy/privacy-on-beam/v4/internal/kv"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam/register"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/filter"
 )
 
 func init() {
@@ -87,13 +87,12 @@ type DistinctPrivacyIDParams struct {
 	// The maximum number of distinct values that a given privacy identifier
 	// can influence. If a privacy identifier is associated with more values,
 	// random values will be dropped. There is an inherent trade-off when
-	// choosing this parameter: a larger MaxPartitionsContributed leads to less
+	// choosing this parameter: a larger MaxContributions leads to less
 	// data loss due to contribution bounding, but since the noise added in
-	// aggregations is scaled according to maxPartitionsContributed, it also
+	// aggregations is scaled according to MaxContributions, it also
 	// means that more noise is added to each count.
-	//
 	// Required.
-	MaxPartitionsContributed int64
+	MaxContributions int64
 }
 
 // DistinctPrivacyID counts the number of distinct privacy identifiers
@@ -158,7 +157,7 @@ func DistinctPrivacyID(s beam.Scope, pcol PrivatePCollection, params DistinctPri
 		beam.TypeDefinition{Var: beam.VType, T: partitionT.Type()})
 	// Second, do cross-partition contribution bounding if not in test mode without contribution bounding.
 	if spec.testMode != TestModeWithoutContributionBounding {
-		decoded = boundContributions(s, decoded, params.MaxPartitionsContributed)
+		decoded = boundContributions(s, decoded, params.MaxContributions)
 	}
 	// Third, now that KV pairs are deduplicated and contribution bounding is
 	// done, remove the keys and count how many times each value appears.
@@ -220,7 +219,7 @@ func checkDistinctPrivacyIDParams(params DistinctPrivacyIDParams, noiseKind nois
 	if err != nil {
 		return err
 	}
-	return checkMaxPartitionsContributed(params.MaxPartitionsContributed)
+	return checkMaxPartitionsContributed(params.MaxContributions)
 }
 
 func addOneValueFn(v beam.V) (beam.V, int64) {
@@ -230,15 +229,15 @@ func addOneValueFn(v beam.V) (beam.V, int64) {
 // countFn is the combineFn used for counting the number of privacy units per partition.
 type countFn struct {
 	// Privacy spec parameters (set during initial construction).
-	Epsilon                  float64
-	NoiseDelta               float64
-	ThresholdDelta           float64
-	PreThreshold             int64
-	MaxPartitionsContributed int64
-	NoiseKind                noise.Kind
-	noise                    noise.Noise // Set during Setup phase according to NoiseKind.
-	PublicPartitions         bool
-	TestMode                 TestMode
+	Epsilon          float64
+	NoiseDelta       float64
+	ThresholdDelta   float64
+	PreThreshold     int64
+	MaxContributions int64
+	NoiseKind        noise.Kind
+	noise            noise.Noise // Set during Setup phase according to NoiseKind.
+	PublicPartitions bool
+	TestMode         TestMode
 }
 
 // newCountFn returns a newCountFn with the given budget and parameters.
@@ -247,14 +246,14 @@ func newCountFn(spec PrivacySpec, params DistinctPrivacyIDParams, noiseKind nois
 		return nil, fmt.Errorf("unknown noise.Kind (%v) is specified. Please specify a valid noise", noiseKind)
 	}
 	return &countFn{
-		Epsilon:                  params.AggregationEpsilon,
-		NoiseDelta:               params.AggregationDelta,
-		ThresholdDelta:           params.PartitionSelectionDelta,
-		PreThreshold:             spec.preThreshold,
-		MaxPartitionsContributed: params.MaxPartitionsContributed,
-		NoiseKind:                noiseKind,
-		PublicPartitions:         publicPartitions,
-		TestMode:                 spec.testMode,
+		Epsilon:          params.AggregationEpsilon,
+		NoiseDelta:       params.AggregationDelta,
+		ThresholdDelta:   params.PartitionSelectionDelta,
+		PreThreshold:     spec.preThreshold,
+		MaxContributions: params.MaxContributions,
+		NoiseKind:        noiseKind,
+		PublicPartitions: publicPartitions,
+		TestMode:         spec.testMode,
 	}, nil
 }
 
@@ -274,7 +273,7 @@ func (fn *countFn) CreateAccumulator() (countAccum, error) {
 	c, err := dpagg.NewCount(&dpagg.CountOptions{
 		Epsilon:                  fn.Epsilon,
 		Delta:                    fn.NoiseDelta,
-		MaxPartitionsContributed: fn.MaxPartitionsContributed,
+		MaxPartitionsContributed: fn.MaxContributions,
 		Noise:                    fn.noise,
 	})
 	return countAccum{C: c, PublicPartitions: fn.PublicPartitions}, err

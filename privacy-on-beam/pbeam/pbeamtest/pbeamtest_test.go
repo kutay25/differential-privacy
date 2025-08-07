@@ -19,11 +19,11 @@ package pbeamtest
 import (
 	"testing"
 
-	"github.com/google/differential-privacy/privacy-on-beam/v4/pbeam"
-	"github.com/google/differential-privacy/privacy-on-beam/v4/pbeam/testutils"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/testing/ptest"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/stats"
+	"github.com/google/differential-privacy/privacy-on-beam/v4/pbeam"
+	"github.com/google/differential-privacy/privacy-on-beam/v4/pbeam/testutils"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -106,8 +106,8 @@ func TestDistinctPrivacyIDTestMode(t *testing.T) {
 
 		pcol := pbeam.MakePrivate(s, col, tc.privacySpec)
 		got := pbeam.DistinctPrivacyID(s, pcol, pbeam.DistinctPrivacyIDParams{
-			MaxPartitionsContributed: tc.maxPartitionsContributed,
-			NoiseKind:                pbeam.LaplaceNoise{}})
+			MaxContributions: tc.maxPartitionsContributed,
+			NoiseKind:        pbeam.LaplaceNoise{}})
 		counts := beam.DropKey(s, got)
 		sumOverPartitions := stats.Sum(s, counts)
 		got = beam.AddFixedKey(s, sumOverPartitions) // Adds a fixed key of 0.
@@ -166,9 +166,9 @@ func TestDistinctPrivacyIDWithPartitionsTestMode(t *testing.T) {
 
 		pcol := pbeam.MakePrivate(s, col, tc.privacySpec)
 		got := pbeam.DistinctPrivacyID(s, pcol, pbeam.DistinctPrivacyIDParams{
-			MaxPartitionsContributed: tc.maxPartitionsContributed,
-			NoiseKind:                pbeam.LaplaceNoise{},
-			PublicPartitions:         publicPartitions})
+			MaxContributions: tc.maxPartitionsContributed,
+			NoiseKind:        pbeam.LaplaceNoise{},
+			PublicPartitions: publicPartitions})
 		counts := beam.DropKey(s, got)
 		sumOverPartitions := stats.Sum(s, counts)
 		got = beam.AddFixedKey(s, sumOverPartitions) // Adds a fixed key of 0.
@@ -215,9 +215,9 @@ func TestDistinctPrivacyIDWithPartitionsTestModeAddsEmptyPartitions(t *testing.T
 
 		pcol := pbeam.MakePrivate(s, col, tc.privacySpec)
 		got := pbeam.DistinctPrivacyID(s, pcol, pbeam.DistinctPrivacyIDParams{
-			MaxPartitionsContributed: 1,
-			NoiseKind:                pbeam.LaplaceNoise{},
-			PublicPartitions:         publicPartitions})
+			MaxContributions: 1,
+			NoiseKind:        pbeam.LaplaceNoise{},
+			PublicPartitions: publicPartitions})
 		want = beam.ParDo(s, testutils.PairII64ToKV, want)
 		testutils.EqualsKVInt64(t, s, got, want)
 		if err := ptest.Run(p); err != nil {
