@@ -21,6 +21,9 @@
 // (From the codelab/main directory)
 // go run --mod=mod . --example=count --input_file=day_data.csv --output_stats_file=stats.csv --output_chart_file=chart.png
 // Replace 'example=count' with 'example=sum', 'example=mean' or 'example=public_partitions' to run other examples.
+
+// Testing New Count
+// go run --mod=mod ./main  --example=count_new --input_file=main/day_data.csv --output_stats_file=stats.csv --output_chart_file=chart.png
 package main
 
 import (
@@ -30,10 +33,11 @@ import (
 	"strings"
 
 	"flag"
-	log "github.com/golang/glog"
-	"github.com/google/differential-privacy/privacy-on-beam/v4/codelab"
+
 	"github.com/apache/beam/sdks/v2/go/pkg/beam"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/register"
+	log "github.com/golang/glog"
+	"github.com/google/differential-privacy/privacy-on-beam/v4/codelab"
 
 	// The following import is required for accessing local files.
 	_ "github.com/apache/beam/sdks/v2/go/pkg/beam/io/filesystem/local"
@@ -66,7 +70,7 @@ func main() {
 
 	// Flag validation.
 	switch *example {
-	case count, mean, sum, publicPartitions:
+	case count, mean, sum, publicPartitions, countNew:
 	case "":
 		log.Exit("No example specified.")
 	default:
@@ -135,6 +139,8 @@ func runRawExample(s beam.Scope, col beam.PCollection, example string) beam.PCol
 		return codelab.RevenuePerHour(s, col)
 	case publicPartitions:
 		return codelab.CountVisitsPerHour(s, col)
+	case countNew:
+		return codelab.CountVisitsPerHour(s, col)
 	default:
 		log.Exitf("Unknown example %q specified, please use one of 'count', 'sum', 'mean', 'public_partitions'", example)
 		return beam.PCollection{}
@@ -151,6 +157,8 @@ func runDPExample(s beam.Scope, col beam.PCollection, example string) beam.PColl
 		return codelab.PrivateRevenuePerHour(s, col)
 	case publicPartitions:
 		return codelab.PrivateCountVisitsPerHourWithPublicPartitions(s, col)
+	case countNew:
+		return codelab.TestNewCount(s, col)
 	default:
 		log.Exitf("Unknown example %q specified, please use one of 'count', 'sum', 'mean', 'public_partitions'", example)
 		return beam.PCollection{}

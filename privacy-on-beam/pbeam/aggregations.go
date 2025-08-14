@@ -25,14 +25,14 @@ import (
 	"math/rand"
 	"reflect"
 
-	"github.com/google/differential-privacy/go/v4/checks"
-	"github.com/google/differential-privacy/go/v4/dpagg"
-	"github.com/google/differential-privacy/go/v4/noise"
-	"github.com/google/differential-privacy/privacy-on-beam/v4/internal/kv"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/core/typex"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/register"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/top"
+	"github.com/google/differential-privacy/go/v4/checks"
+	"github.com/google/differential-privacy/go/v4/dpagg"
+	"github.com/google/differential-privacy/go/v4/noise"
+	"github.com/google/differential-privacy/privacy-on-beam/v4/internal/kv"
 )
 
 func init() {
@@ -151,6 +151,23 @@ type pairInt64 struct {
 // PCollection<codedK,pairInt64<codedV,int>>.
 func rekeyInt64(kv kv.Pair, m int64) ([]byte, pairInt64) {
 	return kv.K, pairInt64{kv.V, m}
+}
+
+// appendOneFn() transforms a PCollection<kv.Pair<codedK, codedV>> into a
+// PCollection<kv.Pair<codedK, codedV>, 1>.
+func appendOneFn(kv kv.Pair) (kv.Pair, int64) {
+	return kv, int64(1)
+}
+
+// dropOneFn() transforms a PCollection<kv.Pair<codedK, codedV>, 1> into a
+// PCollection<kv.Pair<codedK, codedV>>.
+func dropOneFn(kv kv.Pair, m int64) kv.Pair {
+	return kv
+}
+
+// dropKFn() transforms a PCollection<K, V> into a PCollection<V>.
+func dropKFn(_ beam.T, v beam.V) beam.V {
+	return v
 }
 
 // pairFloat64 contains an encoded value and an float64 metric.

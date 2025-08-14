@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/apache/beam/sdks/v2/go/pkg/beam"
+	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/stats"
 	log "github.com/golang/glog"
 	"github.com/google/differential-privacy/go/v4/noise"
 	"github.com/google/differential-privacy/privacy-on-beam/v4/internal/kv"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam/transforms/stats"
 )
 
 // CountParams specifies the parameters associated with a Count aggregation.
@@ -159,21 +159,21 @@ func Count(s beam.Scope, pcol PrivatePCollection, params CountParams) beam.PColl
 
 	// First, encode KV pairs, count how many times each one appears,
 	// and re-key by the original privacy key.
-	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), pcol.col)
-	kvCounts := stats.Count(s, coded)
-	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)
-	rekeyed := beam.ParDo(s, rekeyInt64, counts64)
+	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), pcol.col) // ((pid,pkey))
+	kvCounts := stats.Count(s, coded)                                 // ((pid, pkey), count)
+	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)             // ((pid, pkey), count)
+	rekeyed := beam.ParDo(s, rekeyInt64, counts64)                    // (pid, (pkey, count))
 	// Second, do cross-partition contribution bounding if not in test mode without contribution bounding.
 	if spec.testMode != TestModeWithoutContributionBounding {
 		rekeyed = boundContributions(s, rekeyed, params.MaxPartitionsContributed)
 	}
 	// Third, now that contribution bounding is done, remove the privacy keys,
 	// decode the value, and sum all the counts bounded by MaxValue.
-	countPairs := beam.DropKey(s, rekeyed)
+	countPairs := beam.DropKey(s, rekeyed)								// ((pkey, count))
 	countsKV := beam.ParDo(s,
 		newDecodePairInt64Fn(partitionT.Type()),
 		countPairs,
-		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()})
+		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()})     // (pkey, count)
 
 	var result beam.PCollection
 	// Add public partitions and compute the aggregation output, if public partitions are specified.

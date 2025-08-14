@@ -23,9 +23,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/apache/beam/sdks/v2/go/pkg/beam"
 	"github.com/apache/beam/sdks/v2/go/pkg/beam/io/textio"
 	"github.com/google/differential-privacy/privacy-on-beam/v4/codelab"
-	"github.com/apache/beam/sdks/v2/go/pkg/beam"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/plotutil"
@@ -38,6 +38,7 @@ const (
 	mean             = "mean"
 	sum              = "sum"
 	publicPartitions = "public_partitions"
+	countNew         = "count_new"
 )
 
 func drawPlot(hourToValue, dpHourToValue map[int]float64, example, nonDPOutput, dpOutput string) error {
@@ -66,7 +67,7 @@ func drawPlot(hourToValue, dpHourToValue map[int]float64, example, nonDPOutput, 
 
 	p.X.Label.Text = "Hour"
 	switch example {
-	case count, publicPartitions: // count & publicPartitions both compute visits per hour.
+	case count, publicPartitions, countNew: // count & publicPartitions both compute visits per hour.
 		p.Y.Label.Text = "Visits"
 		p.Title.Text = "Visits Per Hour"
 	case mean:

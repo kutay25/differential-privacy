@@ -1,0 +1,17 @@
+{
+    "gopls": {
+        "build.directoryFilters": [
+            "-cc",
+            "-java",
+            "-learning",
+            "-pipelinedp4j",
+            "-proto",
+            "-python",
+            "-third_party",
+            "-common_docs",
+            "go",
+            "examples/go",
+            "privacy-on-beam",
+        ]
+    }
+}
