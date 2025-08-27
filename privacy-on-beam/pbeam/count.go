@@ -17,7 +17,6 @@
 package pbeam
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/apache/beam/sdks/v2/go/pkg/beam"
@@ -104,6 +103,8 @@ type CountParams struct {
 	//
 	// Optional.
 	AllowNegativeOutputs bool
+	// Optional.
+	MaxContributions int64
 }
 
 // Count counts the number of times a value appears in a PrivatePCollection,
@@ -157,29 +158,43 @@ func Count(s beam.Scope, pcol PrivatePCollection, params CountParams) beam.PColl
 		log.Fatalf("Couldn't drop non-public partitions for Count: %v", err)
 	}
 
-	// First, encode KV pairs, count how many times each one appears,
+	// Fisrt, if MaxContributions is specified, begin by bounding contributions per privacy identifier. Skip if in test mode without contribution bounding.
+	var bounded beam.PCollection
+	if params.MaxContributions > 0 && spec.testMode != TestModeWithoutContributionBounding {
+		bounded = boundContributions(s, pcol.col, params.MaxContributions) // (pid, pkey)
+	} else {
+		bounded = pcol.col
+	}
+
+	// Second, encode KV pairs, count how many times each one appears,
 	// and re-key by the original privacy key.
-	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), pcol.col) // ((pid,pkey))
-	kvCounts := stats.Count(s, coded)                                 // ((pid, pkey), count)
-	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)             // ((pid, pkey), count)
-	rekeyed := beam.ParDo(s, rekeyInt64, counts64)                    // (pid, (pkey, count))
-	// Second, do cross-partition contribution bounding if not in test mode without contribution bounding.
-	if spec.testMode != TestModeWithoutContributionBounding {
+	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), bounded) // ((pid,pkey))
+	kvCounts := stats.Count(s, coded)                                // ((pid, pkey), count)
+	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)            // ((pid, pkey), count)
+	rekeyed := beam.ParDo(s, rekeyInt64, counts64)                   // (pid, (pkey, count))
+	// Third, do cross-partition contribution bounding if we do not bound contributions per privacy identifier.
+	// Skip if in test mode without contribution bounding.
+	if params.MaxContributions == 0 && spec.testMode != TestModeWithoutContributionBounding {
 		rekeyed = boundContributions(s, rekeyed, params.MaxPartitionsContributed)
 	}
-	// Third, now that contribution bounding is done, remove the privacy keys,
+	// Fourth, now that contribution bounding is done, remove the privacy keys,
 	// decode the value, and sum all the counts bounded by MaxValue.
-	countPairs := beam.DropKey(s, rekeyed)								// ((pkey, count))
+	countPairs := beam.DropKey(s, rekeyed) // ((pkey, count))
 	countsKV := beam.ParDo(s,
 		newDecodePairInt64Fn(partitionT.Type()),
 		countPairs,
-		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()})     // (pkey, count)
+		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()}) // (pkey, count)
 
 	var result beam.PCollection
 	// Add public partitions and compute the aggregation output, if public partitions are specified.
 	if params.PublicPartitions != nil {
 		result = addPublicPartitionsForCount(s, *spec, params, noiseKind, countsKV)
 	} else {
+		// At BoundedSum, s0 = mpc, sinf = mcpp * max(|minVal|, |maxVal|) = MaxVal (FOR COUNT)
+		// At PreAggSelectPartitions, s0 = mpc.
+
+		// For BoundedSum, set MaxVal := MC, MaxPartitionsContributed := 1
+		// For PreAggSelectPartitions, set l1 = l0 = MaxContributions
 		boundedSumFn, err := newBoundedSumInt64Fn(*spec, countToSumParams(params), noiseKind, false)
 		if err != nil {
 			log.Fatalf("Couldn't get boundedSumInt64Fn for Count: %v", err)
@@ -224,10 +239,11 @@ func checkCountParams(params CountParams, noiseKind noise.Kind, partitionType re
 	if err != nil {
 		return err
 	}
-	if params.MaxValue <= 0 {
-		return fmt.Errorf("MaxValue should be strictly positive, got %d", params.MaxValue)
-	}
-	return checkMaxPartitionsContributed(params.MaxPartitionsContributed)
+	// if params.MaxValue <= 0 {
+	// 	return fmt.Errorf("MaxValue should be strictly positive, got %d", params.MaxValue)
+	// }
+	// return checkMaxPartitionsContributed(params.MaxPartitionsContributed)
+	return nil
 }
 
 func addPublicPartitionsForCount(s beam.Scope, spec PrivacySpec, params CountParams, noiseKind noise.Kind, countsKV beam.PCollection) beam.PCollection {
@@ -250,6 +266,11 @@ func addPublicPartitionsForCount(s beam.Scope, spec PrivacySpec, params CountPar
 }
 
 func countToSumParams(params CountParams) SumParams {
+	// If MaxValue == 0, then we are using MaxContributions. We will pass MaxContributions inside MaxValue, and set MaxPartitionsContributed to 1.
+	if params.MaxValue == 0 {
+		params.MaxValue = params.MaxContributions
+		params.MaxPartitionsContributed = 1
+	}
 	return SumParams{
 		AggregationEpsilon:       params.AggregationEpsilon,
 		AggregationDelta:         params.AggregationDelta,

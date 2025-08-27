@@ -11,3 +11,9 @@
 # Pipeline Type Formats for
 ## Count:
 Drop Non-Public Partition -> (pid, pk, 1) **CP CB** -> Add Empty Public Partitions -> Accumulate and **PP CB** -> **Private PS** -> Post Aggregation Thresholding 
+
+- [ ] Check if runs as-is.
+- [ ] See if all tests run.
+- [ ] Add validation for parameters.
+- [ ] Check with public partitions.
+- [ ] Check with private partitions.

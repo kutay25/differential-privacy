@@ -369,11 +369,20 @@ func (fn *boundedSumInt64Fn) CreateAccumulator() (boundedSumAccumInt64, error) {
 	}
 	accum := boundedSumAccumInt64{BS: bs, PublicPartitions: fn.PublicPartitions}
 	if !fn.PublicPartitions {
+		// FOR COUNT:
+		// If fn.MaxPartitionsContributed == 0, then we are using MaxContributions, which is passed as MaxValue/Upper.
+		// Then, in the worst case for Partition Selection, we can have up to MaxContributions partitions contributed.
+		var MaxPartitionsContributed int64
+		if fn.MaxPartitionsContributed == 0 {
+			MaxPartitionsContributed = fn.Upper
+		} else {
+			MaxPartitionsContributed = fn.MaxPartitionsContributed	
+		}
 		accum.SP, err = dpagg.NewPreAggSelectPartition(&dpagg.PreAggSelectPartitionOptions{
 			Epsilon:                  fn.PartitionSelectionEpsilon,
 			Delta:                    fn.PartitionSelectionDelta,
 			PreThreshold:             fn.PreThreshold,
-			MaxPartitionsContributed: fn.MaxPartitionsContributed,
+			MaxPartitionsContributed: MaxPartitionsContributed,
 		})
 	}
 	return accum, err
