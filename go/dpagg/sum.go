@@ -135,7 +135,7 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
 	var lInf int64
 	if opt.MaxContributions > 0 {
 		lInf = 1                     // To map noise to l1 = l2 = MaxContributions during Result()
-		upper = opt.MaxContributions // To clamp by MaxContributions during Add() 
+		upper = opt.MaxContributions // To clamp by MaxContributions during Add()
 	} else {
 		lInf, err = getLInfInt(lower, upper, maxContributionsPerPartition)
 	}

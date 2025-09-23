@@ -147,7 +147,7 @@ type PrivacySpec struct {
 	aggregationBudget        *privacyBudget // Epsilon/Delta (ε,δ) budget available for aggregations performed on this PrivatePCollection.
 	partitionSelectionBudget *privacyBudget // Epsilon/Delta (ε,δ) budget available for partition selections performed on this PrivatePCollection.
 	preThreshold             int64          // Pre-threshold K applied on top of DP partition selection.
-	testMode TestMode // Used for test pipelines, disabled by default.
+	testMode                 TestMode       // Used for test pipelines, disabled by default.
 }
 
 // PartitionSelectionParams holds the ε & δ budget to be used for private partition selection of
