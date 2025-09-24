@@ -501,9 +501,11 @@ func TestCountMaxContributionsContributionBounding(t *testing.T) {
 	}
 }
 
-// Checks that Count with MaxContributions bounds per-privacy identifier while using public partitions.
+// Checks that Count with MaxContributions does per-privacy identifier contribution bounding while using public partitions.
 func TestCountWithPartitionsMaxContributionsContributionBounding(t *testing.T) {
 	// We have two test cases, one for public partitions as a PCollection and one for public partitions as a slice (i.e., in-memory).
+	// pairs contains {1,0}, {1,0}, {1,1}, {1,1}; {2,0}, {2,0}, {2,1}, {2,1}; … {50,0}, {50,0}, {50,1}, {50,1}.
+	// with maxContributions = 3, we expect 150 out of 200 elements.
 	for _, tc := range []struct {
 		inMemory bool
 	}{

@@ -81,7 +81,8 @@ type CountParams struct {
 	// aggregations is scaled according to maxPartitionsContributed, it also
 	// means that more noise is added to each count.
 	//
-	// Required.
+	// MaxPartitionsContributed and MaxValue are mutually exclusive with MaxContributions.
+	// One of the two options is required.
 	MaxPartitionsContributed int64
 	// The maximum number of times that a privacy identifier can contribute to
 	// a single count (or, equivalently, the maximum value that a privacy
@@ -91,7 +92,8 @@ type CountParams struct {
 	// There is an inherent trade-off when choosing MaxValue: a larger
 	// parameter means that fewer records are lost, but a larger noise is added.
 	//
-	// Required.
+	// MaxValue and MaxPartitionsContributed are mutually exclusive with MaxContributions.
+	// One of the two options is required.
 	MaxValue int64
 	// Allow negative counts in the output. Most users would expect a count
 	// aggregation to return non-negative values. However, to get better
@@ -103,7 +105,16 @@ type CountParams struct {
 	//
 	// Optional.
 	AllowNegativeOutputs bool
-	// Optional.
+	// The maximum number of times that a privacy identifier can contribute to all 
+	// counts in total. If a privacy identifier is associated with more values, random 
+	// values will be dropped. There is an inherent trade-off when
+	// choosing this parameter: a larger MaxContributions leads to less
+	// data loss due to contribution bounding, but since the noise added in
+	// aggregations is scaled according to MaxContributions, it also
+	// means that more noise is added to each count.
+	//
+	// MaxContributions is mutually exclusive with MaxPartitionsContributed and MaxValue.
+	// One of the two options is required.
 	MaxContributions int64
 }
 
@@ -158,26 +169,29 @@ func Count(s beam.Scope, pcol PrivatePCollection, params CountParams) beam.PColl
 		log.Fatalf("Couldn't drop non-public partitions for Count: %v", err)
 	}
 
+	// First, if MaxContributions is set and not in test mode without contribution bounding, 
+	// do per-privacy identifier contribution bounding.
 	if params.MaxContributions > 0 && spec.testMode != TestModeWithoutContributionBounding {
 		pcol.col = boundContributions(s, pcol.col, params.MaxContributions)
 	}
-	// First, encode KV pairs, count how many times each one appears,
+	// Second, encode KV pairs, count how many times each one appears,
 	// and re-key by the original privacy key.
-	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), pcol.col) 	// ((pid, pkey))
-	kvCounts := stats.Count(s, coded)									// ((pid, pkey), count)
-	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)				
-	rekeyed := beam.ParDo(s, rekeyInt64, counts64)						// (pid, (pkey, count))
-	// Second, do cross-partition contribution bounding if not in test mode without contribution bounding.
+	coded := beam.ParDo(s, kv.NewEncodeFn(idT, partitionT), pcol.col)
+	kvCounts := stats.Count(s, coded)
+	counts64 := beam.ParDo(s, convertToInt64Fn, kvCounts)
+	rekeyed := beam.ParDo(s, rekeyInt64, counts64)
+	// Third, do cross-partition contribution bounding if MaxContributions is not set, and
+	// not in test mode without contribution bounding.
 	if params.MaxContributions == 0 && spec.testMode != TestModeWithoutContributionBounding {
 		rekeyed = boundContributions(s, rekeyed, params.MaxPartitionsContributed)
 	}
-	// Third, now that contribution bounding is done, remove the privacy keys,
-	// decode the value, and sum all the counts bounded by MaxValue.
-	countPairs := beam.DropKey(s, rekeyed)								// ((pkey, count))
+	// Fourth, now that contribution bounding is done, remove the privacy keys,
+	// decode the value, and sum all the counts bounded by MaxValue or MaxContributions.
+	countPairs := beam.DropKey(s, rekeyed)
 	countsKV := beam.ParDo(s,
 		newDecodePairInt64Fn(partitionT.Type()),
 		countPairs,
-		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()})		// (pkey, count)
+		beam.TypeDefinition{Var: beam.WType, T: partitionT.Type()})
 
 	var result beam.PCollection
 	// Add public partitions and compute the aggregation output, if public partitions are specified.

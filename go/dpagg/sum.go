@@ -84,7 +84,10 @@ type BoundedSumInt64Options struct {
 	// Defaults to 1. This is only needed for other aggregation functions using BoundedSum;
 	// which is why the option is not exported.
 	maxContributionsPerPartition int64
-	MaxContributions             int64
+	// How many times may a single privacy unit contribute in total to all partitions?
+	//
+	// Mutually exclusive with MaxPartitionsContributed. One of the two options is required.
+	MaxContributions int64
 }
 
 // NewBoundedSumInt64 returns a new BoundedSumInt64, whose sum is initialized at 0.
@@ -99,11 +102,9 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
 
 	var l0 int64
 	if opt.MaxContributions > 0 {
-		// To set l1 = l2 = MaxContributions during Result()
+		// When using MaxContributions, l0Sensitivity is used to pass the L1 sensitivity to the noise layer.
 		l0 = opt.MaxContributions
 	} else {
-		// Legacy per-partition contribution bounding where the user specifies the
-		// number of partitions a privacy unit may contribute to.
 		l0 = opt.MaxPartitionsContributed
 	}
 
@@ -118,8 +119,8 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
 	}
 	// Check bounds & use them to compute L_∞ sensitivity
 	lower, upper := opt.Lower, opt.Upper
-	if opt.MaxContributions == 0 && lower == 0 && upper == 0 {
-		return nil, fmt.Errorf("NewBoundedSumInt64: If you are not using MaxContributions, Lower and Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
+	if opt.MaxPartitionsContributed > 0 && lower == 0 && upper == 0 {
+		return nil, fmt.Errorf("NewBoundedSumInt64: If you are using MaxPartitionsContributed, Lower and Upper must be set (automatic bounds determination is not implemented yet). Lower and Upper cannot be both 0")
 	}
 	var err error
 	switch noise.ToKind(opt.Noise) {
@@ -134,12 +135,14 @@ func NewBoundedSumInt64(opt *BoundedSumInt64Options) (*BoundedSumInt64, error) {
 
 	var lInf int64
 	if opt.MaxContributions > 0 {
-		lInf = 1                     // To map noise to l1 = l2 = MaxContributions during Result()
-		upper = opt.MaxContributions // To clamp by MaxContributions during Add()
+		// When using MaxContributions, lInfSensitivity is set to 1 because l0Sensitivity is used to pass
+		// L1 sensitivity to the noise layer.
+		lInf = 1
+		// The per-partition contribution is clamped so that it does not exceed the total contribution bound.
+		upper = opt.MaxContributions
 	} else {
 		lInf, err = getLInfInt(lower, upper, maxContributionsPerPartition)
 	}
-	// TODO: Understand why here is needed
 	if err != nil {
 		if noise.ToKind(opt.Noise) == noise.Unrecognised {
 			// Ignore sensitivity overflows if noise is not recognised.
